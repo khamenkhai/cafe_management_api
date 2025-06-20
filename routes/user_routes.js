@@ -3,11 +3,13 @@ const router = express.Router();
 require("dotenv").config();
 const connection = require("../connection");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt"); 
+const bcrypt = require("bcrypt");
 const nodemailer = require("nodemailer");
+const auth = require("../services/authentication");
 
 // SIGNUP ROUTE
 router.post("/signup", (req, res) => {
+
     const user = req.body;
 
     const checkQuery = "SELECT email FROM users WHERE email = ?";
@@ -77,5 +79,94 @@ router.post("/login", (req, res) => {
         }
     });
 });
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL,
+        password: process.env.PASSWORD,
+    }
+});
+
+
+router.post("/forgetPassword", (req, res) => {
+    const user = req.body;
+    const checkQuery = "select email, password from users where email=?";
+    connection.query(checkQuery, [user.email], (err, results) => {
+        if (!err) {
+            if (results.length <= 0) {
+                return res.status(200).json({ message: "Password sent successfully to your email! " })
+            } else {
+                var mailOptions = {
+                    from: process.env.EMAIL,
+                    to: results[0].email,
+                    subject: "Password by Cafe Management System",
+                    html: `
+                        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                            <h2 style="color: #4CAF50;">Cafe Management System</h2>
+                            <p>Hello,</p>
+                            <p>You requested to retrieve your password. Here are your credentials:</p>
+                            <div style="background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; margin: 15px 0;">
+                            <p><strong>Email:</strong> ${results[0].email}</p>
+                            <p><strong>Password:</strong> ${results[0].password}</p>
+                            </div>
+                            <p>For your security, we recommend changing your password after logging in.</p>
+                            <p>Thank you,<br/>Cafe Management Team</p>
+                        </div>
+                        `}
+
+                transporter.sendMail(mailOptions, function (error, info) {
+                    if (error) {
+                        console.log(`=> error : ${error}`)
+                    } else {
+                        console.log(`=> Email sent : ${info.response}`);
+                    }
+                });
+
+                return res.status(200).json({ message: "Password was sent sucessfully to your email." })
+            }
+        } else {
+            return res.status(500).json({ error: err })
+        }
+    })
+});
+
+router.get("/get", auth.authenticationToken,(req, res) => {
+    var query = "select id,name,email,contactNumber,status from users where role='user'";
+    connection.query(query, (err, results) => {
+        if (!err) {
+            return res.status(200).json(results);
+        } else {
+            return res.status(500).json({ data: err })
+        }
+    })
+});
+
+router.put("/update/:id", (req, res) => {
+    const userId = req.params.id;
+    const { name, email, contactNumber, status } = req.body;
+
+    const query = `
+        UPDATE users
+        SET name = ?, email = ?, contactNumber = ?, status = ?
+        WHERE id = ?
+    `;
+
+    const values = [name, email, contactNumber, status, userId];
+
+    connection.query(query, values, (err, result) => {
+        if (!err) {
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ message: "User not found" });
+            }
+            return res.status(200).json({ message: "User updated successfully" });
+        } else {
+            return res.status(500).json({ error: err });
+        }
+    });
+});
+
+
+
 
 module.exports = router;
